@@ -13,24 +13,37 @@ const MINH_NGOC_URL = 'https://www.minhngoc.net.vn/getkqxs/mien-bac.js';
 let cachedHistoricalStats: HistoricalStats | null = null;
 let lastStatsFetchTime = 0;
 
-// Fetch via CORS proxy
+// Fetch via Cloudflare Pages Function or fallback proxies
 async function fetchMinhNgocDirect(dateStr?: string): Promise<{ result: XSMBResult | null; rawText: string }> {
   const targetUrl = dateStr
     ? `https://www.minhngoc.net.vn/getkqxs/mien-bac/${dateStr}.js`
     : MINH_NGOC_URL;
 
+  // 1. Try our own Cloudflare Pages Function first (/api/xsmb)
+  // This has NO CORS restriction and NO 403 / 405 error
+  const internalEndpoint = dateStr ? `/api/xsmb?date=${dateStr}` : `/api/xsmb`;
+  try {
+    const res = await fetch(internalEndpoint);
+    if (res.ok) {
+      const text = await res.text();
+      const parsed = parseMinhNgocJs(text);
+      if (parsed && parsed.special.length > 0) {
+        return { result: parsed, rawText: text };
+      }
+    }
+  } catch {
+    // If running in local file/offline mode or outside Pages, fallback to public proxies
+  }
+
+  // 2. Fallback to public CORS proxies (DO NOT send custom headers like 'Cache-Control' to avoid triggering CORS preflight OPTIONS which gives 405/403)
   const proxies = [
     `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}&_t=${Date.now()}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
   ];
 
   for (const proxyUrl of proxies) {
     try {
-      const res = await fetch(proxyUrl, {
-        headers: {
-          'Cache-Control': 'no-cache',
-        },
-      });
+      const res = await fetch(proxyUrl);
       if (!res.ok) continue;
       const text = await res.text();
       const parsed = parseMinhNgocJs(text);
