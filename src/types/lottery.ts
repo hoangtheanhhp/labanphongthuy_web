@@ -21,6 +21,30 @@ export interface LotteryState {
   source: string;
 }
 
+export interface NumberStatItem {
+  number: string;
+  count: number;
+  lastAppearanceDate?: string;
+  daysAgo?: number;
+}
+
+export interface SpecialStatItem {
+  date: string;
+  fullSpecial: string;
+  twoDigits: string;
+  sum: number;
+  isEven: boolean;
+}
+
+export interface HistoricalStats {
+  totalDays: number;
+  topFrequent: NumberStatItem[];
+  loGan: NumberStatItem[];
+  specialHistory: SpecialStatItem[];
+  headDistribution: Record<number, number>;
+  tailDistribution: Record<number, number>;
+}
+
 // Helper to compute đầu / đuôi loto from 2 last digits of all prizes
 export function computeLoto(data: Omit<XSMBResult, 'headsLoto' | 'tailsLoto'>): {
   headsLoto: Record<number, string[]>;
@@ -78,7 +102,7 @@ export function parseMinhNgocJs(content: string): XSMBResult | null {
         return match[1]
           .split('-')
           .map((s) => s.trim())
-          .filter((s) => s.length > 0);
+          .filter((s) => s.length > 0 && /^\d+$/.test(s));
       }
       return [];
     };
@@ -120,4 +144,16 @@ export function parseMinhNgocJs(content: string): XSMBResult | null {
     console.error('Error parsing Minh Ngoc data:', err);
     return null;
   }
+}
+
+// Extract available date strings from dropdown in Minh Ngoc HTML
+export function extractAvailableDates(content: string): string[] {
+  const matches = content.match(/<option value="([0-9]{2}-[0-9]{2}-[0-9]{4})"/g);
+  if (!matches) return [];
+  return matches
+    .map((m) => {
+      const d = m.match(/value="([^"]+)"/);
+      return d ? d[1] : '';
+    })
+    .filter((d) => Boolean(d));
 }

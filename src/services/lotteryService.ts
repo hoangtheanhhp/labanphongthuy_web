@@ -1,14 +1,27 @@
-import { XSMBResult, parseMinhNgocJs, computeLoto } from '../types/lottery';
+import {
+  XSMBResult,
+  parseMinhNgocJs,
+  extractAvailableDates,
+  HistoricalStats,
+  NumberStatItem,
+  SpecialStatItem,
+} from '../types/lottery';
 
 const MINH_NGOC_URL = 'https://www.minhngoc.net.vn/getkqxs/mien-bac.js';
-const GITHUB_BACKUP_URL =
-  'https://raw.githubusercontent.com/khiemdoan/vietnam-lottery-xsmb-analysis/refs/heads/main/data/xsmb.json';
+
+// Cache in-memory
+let cachedHistoricalStats: HistoricalStats | null = null;
+let lastStatsFetchTime = 0;
 
 // Fetch via CORS proxy
-async function fetchMinhNgocDirect(): Promise<XSMBResult | null> {
+async function fetchMinhNgocDirect(dateStr?: string): Promise<{ result: XSMBResult | null; rawText: string }> {
+  const targetUrl = dateStr
+    ? `https://www.minhngoc.net.vn/getkqxs/mien-bac/${dateStr}.js`
+    : MINH_NGOC_URL;
+
   const proxies = [
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(MINH_NGOC_URL)}&_t=${Date.now()}`,
-    `https://corsproxy.io/?${encodeURIComponent(MINH_NGOC_URL)}`,
+    `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}&_t=${Date.now()}`,
   ];
 
   for (const proxyUrl of proxies) {
@@ -22,96 +35,175 @@ async function fetchMinhNgocDirect(): Promise<XSMBResult | null> {
       const text = await res.text();
       const parsed = parseMinhNgocJs(text);
       if (parsed && parsed.special.length > 0) {
-        return parsed;
+        return { result: parsed, rawText: text };
       }
     } catch {
-      // try next proxy
+      // try next
     }
   }
-  return null;
+  return { result: null, rawText: '' };
 }
 
-// Fallback to GitHub dataset if live scraping is temporarily unreachable
-async function fetchGithubBackup(): Promise<XSMBResult | null> {
-  try {
-    const res = await fetch(`${GITHUB_BACKUP_URL}?_t=${Date.now()}`);
-    if (!res.ok) return null;
-    const jsonList = await res.json();
-    if (!Array.isArray(jsonList) || jsonList.length === 0) return null;
+export async function fetchXSMBRealtime(): Promise<{
+  data: XSMBResult | null;
+  source: string;
+  availableDates: string[];
+}> {
+  const { result, rawText } = await fetchMinhNgocDirect();
+  const availableDates = extractAvailableDates(rawText);
 
-    // Latest element
-    const latest = jsonList[jsonList.length - 1];
-    const pad = (n: number | string | undefined, length: number) => {
-      if (n === undefined || n === null) return '';
-      return String(n).padStart(length, '0');
-    };
-
-    const d = new Date(latest.date);
-    const dateStr = !isNaN(d.getTime())
-      ? `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
-      : latest.date;
-
-    const baseResult = {
-      date: dateStr,
-      special: [pad(latest.special, 5)],
-      prize1: [pad(latest.prize1, 5)],
-      prize2: [pad(latest.prize2_1, 5), pad(latest.prize2_2, 5)].filter(Boolean),
-      prize3: [
-        pad(latest.prize3_1, 5),
-        pad(latest.prize3_2, 5),
-        pad(latest.prize3_3, 5),
-        pad(latest.prize3_4, 5),
-        pad(latest.prize3_5, 5),
-        pad(latest.prize3_6, 5),
-      ].filter(Boolean),
-      prize4: [
-        pad(latest.prize4_1, 4),
-        pad(latest.prize4_2, 4),
-        pad(latest.prize4_3, 4),
-        pad(latest.prize4_4, 4),
-      ].filter(Boolean),
-      prize5: [
-        pad(latest.prize5_1, 4),
-        pad(latest.prize5_2, 4),
-        pad(latest.prize5_3, 4),
-        pad(latest.prize5_4, 4),
-        pad(latest.prize5_5, 4),
-        pad(latest.prize5_6, 4),
-      ].filter(Boolean),
-      prize6: [pad(latest.prize6_1, 3), pad(latest.prize6_2, 3), pad(latest.prize6_3, 3)].filter(Boolean),
-      prize7: [
-        pad(latest.prize7_1, 2),
-        pad(latest.prize7_2, 2),
-        pad(latest.prize7_3, 2),
-        pad(latest.prize7_4, 2),
-      ].filter(Boolean),
-      isLive: false,
-    };
-
-    const { headsLoto, tailsLoto } = computeLoto(baseResult);
-    return {
-      ...baseResult,
-      headsLoto,
-      tailsLoto,
-    };
-  } catch (err) {
-    console.error('Error fetching github backup xsmb:', err);
-    return null;
+  if (result) {
+    return { data: result, source: 'Minh Ngọc Realtime', availableDates };
   }
+
+  return { data: null, source: 'Không thể kết nối', availableDates: [] };
 }
 
-export async function fetchXSMBRealtime(): Promise<{ data: XSMBResult | null; source: string }> {
-  // 1. Try real-time provider (Minh Ngọc via CORS proxy)
-  const realTimeData = await fetchMinhNgocDirect();
-  if (realTimeData) {
-    return { data: realTimeData, source: 'Minh Ngọc Realtime' };
+export async function fetchXSMBByDate(dateStr: string): Promise<XSMBResult | null> {
+  const { result } = await fetchMinhNgocDirect(dateStr);
+  return result;
+}
+
+// Fetch historical days and compute statistics (Tần suất số về nhiều, Lô Gan, Giải Đặc Biệt)
+export async function fetchHistoricalStats(
+  datesToAnalyze: string[] = [],
+  maxDays = 15
+): Promise<HistoricalStats | null> {
+  const now = Date.now();
+  // Cache for 5 minutes
+  if (cachedHistoricalStats && now - lastStatsFetchTime < 300000) {
+    return cachedHistoricalStats;
   }
 
-  // 2. Try Github daily database backup
-  const backupData = await fetchGithubBackup();
-  if (backupData) {
-    return { data: backupData, source: 'Hệ Thống Dữ Liệu Lưu Trữ' };
+  let dates = datesToAnalyze;
+  if (dates.length === 0) {
+    const { rawText } = await fetchMinhNgocDirect();
+    dates = extractAvailableDates(rawText);
   }
 
-  return { data: null, source: 'Không thể kết nối' };
+  if (dates.length === 0) return null;
+
+  const selectedDates = dates.slice(0, maxDays);
+
+  // Fetch concurrently (batches of 4 to avoid rate limits)
+  const results: XSMBResult[] = [];
+  const batchSize = 4;
+  for (let i = 0; i < selectedDates.length; i += batchSize) {
+    const batch = selectedDates.slice(i, i + batchSize);
+    const batchPromises = batch.map((d) => fetchXSMBByDate(d));
+    const batchResults = await Promise.all(batchPromises);
+    batchResults.forEach((r) => {
+      if (r) results.push(r);
+    });
+  }
+
+  if (results.length === 0) return null;
+
+  // Process statistics
+  // Count frequency of 2-digit numbers (00 -> 99)
+  const counts: Record<string, number> = {};
+  const lastAppearance: Record<string, { date: string; daysAgo: number }> = {};
+  const headDist: Record<number, number> = {};
+  const tailDist: Record<number, number> = {};
+  const specialList: SpecialStatItem[] = [];
+
+  for (let i = 0; i <= 9; i++) {
+    headDist[i] = 0;
+    tailDist[i] = 0;
+  }
+  for (let i = 0; i <= 99; i++) {
+    const num = String(i).padStart(2, '0');
+    counts[num] = 0;
+    lastAppearance[num] = { date: '', daysAgo: 999 };
+  }
+
+  // Iterate chronologically from newest (index 0) to oldest
+  results.forEach((dayRes, dayIndex) => {
+    const allNums: string[] = [
+      ...dayRes.special,
+      ...dayRes.prize1,
+      ...dayRes.prize2,
+      ...dayRes.prize3,
+      ...dayRes.prize4,
+      ...dayRes.prize5,
+      ...dayRes.prize6,
+      ...dayRes.prize7,
+    ];
+
+    // Special prize analysis
+    if (dayRes.special.length > 0) {
+      const sp = dayRes.special[0];
+      const tail2 = sp.slice(-2);
+      const digitSum = sp
+        .split('')
+        .reduce((acc, char) => acc + (parseInt(char, 10) || 0), 0);
+      const isEven = parseInt(tail2, 10) % 2 === 0;
+
+      specialList.push({
+        date: dayRes.date,
+        fullSpecial: sp,
+        twoDigits: tail2,
+        sum: digitSum,
+        isEven,
+      });
+    }
+
+    allNums.forEach((n) => {
+      const clean = n.trim();
+      if (clean.length >= 2) {
+        const twoDigits = clean.slice(-2);
+        counts[twoDigits] = (counts[twoDigits] || 0) + 1;
+
+        const h = parseInt(twoDigits[0], 10);
+        const t = parseInt(twoDigits[1], 10);
+        if (!isNaN(h)) headDist[h] = (headDist[h] || 0) + 1;
+        if (!isNaN(t)) tailDist[t] = (tailDist[t] || 0) + 1;
+
+        if (lastAppearance[twoDigits] && lastAppearance[twoDigits].daysAgo === 999) {
+          lastAppearance[twoDigits] = {
+            date: dayRes.date,
+            daysAgo: dayIndex,
+          };
+        }
+      }
+    });
+  });
+
+  // Top Frequent numbers
+  const freqList: NumberStatItem[] = Object.keys(counts)
+    .map((num) => ({
+      number: num,
+      count: counts[num],
+      lastAppearanceDate: lastAppearance[num]?.date || '',
+      daysAgo: lastAppearance[num]?.daysAgo,
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  // Lô Gan (Numbers that haven't appeared for the longest time, or 0 count)
+  const ganList: NumberStatItem[] = Object.keys(counts)
+    .map((num) => ({
+      number: num,
+      count: counts[num],
+      lastAppearanceDate: lastAppearance[num]?.date || '',
+      daysAgo: lastAppearance[num]?.daysAgo,
+    }))
+    .sort((a, b) => {
+      if (a.count !== b.count) return a.count - b.count; // 0 first
+      return (b.daysAgo || 0) - (a.daysAgo || 0); // longest ago first
+    })
+    .slice(0, 10);
+
+  const stats: HistoricalStats = {
+    totalDays: results.length,
+    topFrequent: freqList,
+    loGan: ganList,
+    specialHistory: specialList,
+    headDistribution: headDist,
+    tailDistribution: tailDist,
+  };
+
+  cachedHistoricalStats = stats;
+  lastStatsFetchTime = Date.now();
+  return stats;
 }
