@@ -7,6 +7,7 @@ import { IChingLookup } from './components/IChingLookup';
 import { SatKhiRemedies } from './components/SatKhiRemedies';
 import { BuildingAgeCalculator } from './components/BuildingAgeCalculator';
 import { VanKhanLookup } from './components/VanKhanLookup';
+import { LotteryScreen } from './components/LotteryScreen';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('cung');
@@ -19,6 +20,7 @@ export const App: React.FC = () => {
         {activeTab === 'cung' && <CungCalculator />}
         {activeTab === 'tuoilamnha' && <BuildingAgeCalculator />}
         {activeTab === 'vankhan' && <VanKhanLookup />}
+        {activeTab === 'xsmb' && <LotteryScreen />}
         {activeTab === 'luban' && <LuBanRuler />}
         {activeTab === 'tamyeu' && <TamYeuGuide />}
         {activeTab === 'iching' && <IChingLookup />}

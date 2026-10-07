@@ -1,7 +1,7 @@
 import React from 'react';
-import { Compass, Ruler, Home, BookOpen, ShieldAlert, Hammer, ScrollText } from 'lucide-react';
+import { Compass, Ruler, Home, BookOpen, ShieldAlert, Hammer, ScrollText, Radio } from 'lucide-react';
 
-export type TabType = 'cung' | 'luban' | 'tamyeu' | 'tuoilamnha' | 'vankhan' | 'iching' | 'satkhi';
+export type TabType = 'cung' | 'tuoilamnha' | 'vankhan' | 'xsmb' | 'luban' | 'tamyeu' | 'iching' | 'satkhi';
 
 interface NavbarProps {
   activeTab: TabType;
@@ -13,6 +13,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabChange }) => {
     { id: 'cung', label: 'Mệnh Quái', icon: <Compass className="w-4 h-4" /> },
     { id: 'tuoilamnha', label: 'Tuổi Làm Nhà', icon: <Hammer className="w-4 h-4" /> },
     { id: 'vankhan', label: 'Văn Khấn', icon: <ScrollText className="w-4 h-4" /> },
+    { id: 'xsmb', label: 'XSMB Trực Tiếp', icon: <Radio className="w-4 h-4 text-north-red animate-pulse" /> },
     { id: 'luban', label: 'Thước Lỗ Ban', icon: <Ruler className="w-4 h-4" /> },
     { id: 'tamyeu', label: 'Tam Yếu (Bếp/Cửa)', icon: <Home className="w-4 h-4" /> },
     { id: 'iching', label: '64 Quẻ Dịch', icon: <BookOpen className="w-4 h-4" /> },
