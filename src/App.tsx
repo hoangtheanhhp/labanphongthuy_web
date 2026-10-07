@@ -13,8 +13,8 @@ export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>(() => {
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab') as TabType;
-    const validTabs: TabType[] = ['cung', 'tuoilamnha', 'vankhan', 'xsmb', 'luban', 'tamyeu', 'iching', 'satkhi'];
-    return validTabs.includes(tabParam) ? tabParam : 'cung';
+    const validTabs: TabType[] = ['xsmb', 'cung', 'tuoilamnha', 'vankhan', 'luban', 'tamyeu', 'iching', 'satkhi'];
+    return validTabs.includes(tabParam) ? tabParam : 'xsmb';
   });
 
   return (
