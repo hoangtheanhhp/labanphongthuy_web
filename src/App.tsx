@@ -10,7 +10,12 @@ import { VanKhanLookup } from './components/VanKhanLookup';
 import { LotteryScreen } from './components/LotteryScreen';
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<TabType>('cung');
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab') as TabType;
+    const validTabs: TabType[] = ['cung', 'tuoilamnha', 'vankhan', 'xsmb', 'luban', 'tamyeu', 'iching', 'satkhi'];
+    return validTabs.includes(tabParam) ? tabParam : 'cung';
+  });
 
   return (
     <div className="min-h-screen bg-bg-dark text-ivory flex flex-col">
