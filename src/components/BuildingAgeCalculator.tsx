@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { getSavedUserProfile, saveUserProfileToStorage } from '../utils/userStorage';
 
 // Lunar calculator logic (simplified port from Flutter)
 const canList = ['Giáp', 'Ất', 'Bính', 'Đinh', 'Mậu', 'Kỷ', 'Canh', 'Tân', 'Nhâm', 'Quý'];
@@ -125,11 +126,26 @@ function ResultRow({ title, isHung, description }: { title: string; isHung: bool
 
 export const BuildingAgeCalculator: React.FC = () => {
   const currentYear = new Date().getFullYear();
-  const [birthYear, setBirthYear] = useState(1990);
+  const [birthYear, setBirthYear] = useState(() => getSavedUserProfile().birthYear);
   const [buildYear, setBuildYear] = useState(currentYear);
-  const [result, setResult] = useState<BuildingResult | null>(null);
+  const [result, setResult] = useState<BuildingResult | null>(() => {
+    const saved = getSavedUserProfile();
+    return calculateBuildingAge(saved.birthYear, currentYear);
+  });
+
+  useEffect(() => {
+    const handleProfileSync = (e: any) => {
+      if (e.detail?.birthYear) {
+        setBirthYear(e.detail.birthYear);
+        setResult(calculateBuildingAge(e.detail.birthYear, buildYear));
+      }
+    };
+    window.addEventListener('phongthuy_profile_updated', handleProfileSync);
+    return () => window.removeEventListener('phongthuy_profile_updated', handleProfileSync);
+  }, [buildYear]);
 
   const handleCalculate = () => {
+    saveUserProfileToStorage({ birthYear });
     setResult(calculateBuildingAge(birthYear, buildYear));
   };
 

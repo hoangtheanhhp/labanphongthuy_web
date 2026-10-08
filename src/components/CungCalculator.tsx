@@ -1,11 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BAGUA_PALACES, BaguaPalace } from '../data/fengshui';
 import { Compass, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
+import { getSavedUserProfile, saveUserProfileToStorage } from '../utils/userStorage';
 
 export const CungCalculator: React.FC = () => {
-  const [birthYear, setBirthYear] = useState<number>(1990);
-  const [gender, setGender] = useState<'male' | 'female'>('male');
-  const [result, setResult] = useState<BaguaPalace | null>(() => calculateCung(1990, 'male'));
+  const [birthYear, setBirthYear] = useState<number>(() => getSavedUserProfile().birthYear);
+  const [gender, setGender] = useState<'male' | 'female'>(() => getSavedUserProfile().gender);
+  const [result, setResult] = useState<BaguaPalace | null>(() => {
+    const saved = getSavedUserProfile();
+    return calculateCung(saved.birthYear, saved.gender);
+  });
+
+  useEffect(() => {
+    const handleProfileSync = (e: any) => {
+      if (e.detail) {
+        setBirthYear(e.detail.birthYear);
+        setGender(e.detail.gender);
+        setResult(calculateCung(e.detail.birthYear, e.detail.gender));
+      }
+    };
+    window.addEventListener('phongthuy_profile_updated', handleProfileSync);
+    return () => window.removeEventListener('phongthuy_profile_updated', handleProfileSync);
+  }, []);
 
   function calculateCung(year: number, gen: 'male' | 'female'): BaguaPalace | null {
     let sum = year % 100;
@@ -52,6 +68,7 @@ export const CungCalculator: React.FC = () => {
   }
 
   const handleCalculate = () => {
+    saveUserProfileToStorage({ birthYear, gender });
     const pal = calculateCung(birthYear, gender);
     setResult(pal);
   };
